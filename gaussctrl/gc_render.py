@@ -41,6 +41,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, T
 from rich.table import Table
 from torch import Tensor
 from typing_extensions import Annotated
+from gaussctrl.uco_utils import create_transforms_from_uco, load_uco_data
 
 from nerfstudio.cameras.camera_paths import get_interpolated_camera_path, get_path_from_json, get_spiral_path
 from nerfstudio.cameras.cameras import Cameras, CameraType, RayBundle
@@ -766,6 +767,7 @@ class DatasetRender(BaseRender):
         for split in self.split.split("+"):
             datamanager: FullImageDatamanager
             dataset: Dataset
+            split='train'
             if split == "train":
                 with _disable_datamanager_setup(data_manager_config._target):  # pylint: disable=protected-access
                     datamanager = data_manager_config.setup(test_mode="test", device=pipeline.device)
@@ -780,6 +782,7 @@ class DatasetRender(BaseRender):
                 dataparser_outputs = getattr(dataset, "_dataparser_outputs", None)
                 if dataparser_outputs is None:
                     dataparser_outputs = datamanager.dataparser.get_dataparser_outputs(split=datamanager.test_split)
+            #dataset = datamanager.train_dataset#TODO OCCHIO
             dataloader = FixedIndicesEvalDataloader(
                 input_dataset=dataset,
                 device=datamanager.device,
@@ -814,10 +817,10 @@ class DatasetRender(BaseRender):
                         image_name = f"{camera_idx:05d}"
 
                         # Try to get the original filename
-                        image_name = (
-                            dataparser_outputs.image_filenames[camera_idx].with_suffix("").relative_to(images_root)
-                        )
-
+                        #image_name = (
+                        #    dataparser_outputs.image_filenames[camera_idx].with_suffix("").relative_to(images_root)
+                        #)
+                        #image_name = f"{camera_idx:05d}"
                         output_path = self.output_path / rendered_output_name / image_name
                         output_path.parent.mkdir(exist_ok=True, parents=True)
 

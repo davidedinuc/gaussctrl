@@ -23,8 +23,8 @@ from copy import deepcopy
 import numpy as np 
 from PIL import Image
 import mediapy as media
-from lang_sam import LangSAM
-
+#from lang_sam import LangSAM
+from PIL import Image
 import torch, random
 from torch.cuda.amp.grad_scaler import GradScaler
 from typing_extensions import Literal
@@ -39,6 +39,7 @@ from gaussctrl import utils
 from nerfstudio.viewer_legacy.server.utils import three_js_perspective_camera_focal_length
 from nerfstudio.cameras.cameras import Cameras, CameraType
 from nerfstudio.utils import colormaps
+from uco3d import UCO3DDataset, UCO3DFrameDataBuilder, opencv_cameras_projection_from_uco3d
 
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UNet2DConditionModel
 from diffusers.schedulers import DDIMScheduler, DDIMInverseScheduler
@@ -72,7 +73,8 @@ class GaussCtrlPipelineConfig(VanillaPipelineConfig):
     diffusion_ckpt: str = 'CompVis/stable-diffusion-v1-4'
     """Diffusion checkpoints"""
     
-
+    scene_name: str = "scene"
+    """The name of the scene. Used for selecting the dataset."""
 class GaussCtrlPipeline(VanillaPipeline):
     """GaussCtrl pipeline"""
 
@@ -86,10 +88,12 @@ class GaussCtrlPipeline(VanillaPipeline):
         world_size: int = 1,
         local_rank: int = 0,
         grad_scaler: Optional[GradScaler] = None,
+        uco_data: UCO3DDataset = None,
     ):
-        super().__init__(config, device, test_mode, world_size, local_rank)
+        super().__init__(config, device, test_mode, world_size, local_rank, uco_data = uco_data) #QUI
         self.test_mode = test_mode
-        self.langsam = LangSAM()
+        #if self.config.langsam_obj != "":#TODO controlla se crea problemi
+        #    self.langsam = LangSAM() 
         
         self.edit_prompt = self.config.edit_prompt
         self.reverse_prompt = self.config.reverse_prompt
@@ -109,7 +113,7 @@ class GaussCtrlPipeline(VanillaPipeline):
         view_num = len(self.datamanager.cameras) 
         anchors = [(view_num * i) // self.config.ref_view_num for i in range(self.config.ref_view_num)] + [view_num]
         
-        random.seed(13789)
+        random.seed(13789) #TODO controlla questo seed
         self.ref_indices = [random.randint(anchor, anchors[idx+1]) for idx, anchor in enumerate(anchors[:-1])] 
         self.num_ref_views = len(self.ref_indices)
 
@@ -132,6 +136,12 @@ class GaussCtrlPipeline(VanillaPipeline):
             rendered_rgb = rendered_image['rgb'].to(torch.float16) # [512 512 3] 0-1
             rendered_depth = rendered_image['depth'].to(torch.float16) # [512 512 1]
 
+            #rendered_gray = 0.2989 * rendered_rgb[:, :, 0] + 0.5870 * rendered_rgb[:, :, 1] + 0.1140 * rendered_rgb[:, :, 2]  # Grayscale conversion
+#
+            ### Replace the RGB image with the grayscale image in the rendered_image dictionary
+            #rendered_rgb_grey = rendered_gray.unsqueeze(-1).expand(-1, -1, 3)
+            #rendered_rgb_grey = rendered_rgb_grey.clamp(0, 1)
+
             # reverse the images to noises
             self.pipe.unet.set_attn_processor(processor=AttnProcessor())
             self.pipe.controlnet.set_attn_processor(processor=AttnProcessor()) 
@@ -145,13 +155,16 @@ class GaussCtrlPipeline(VanillaPipeline):
                                 image=disparity, return_dict=False, guidance_scale=0, output_type='latent')
 
             # LangSAM is optional
-            if self.config.langsam_obj != "":
+            if self.config.langsam_obj != "": #NOTE here add masks from UCO3D
                 langsam_obj = self.config.langsam_obj
                 langsam_rgb_pil = Image.fromarray((rendered_rgb.cpu().numpy() * 255).astype(np.uint8))
                 masks, _, _, _ = self.langsam.predict(langsam_rgb_pil, langsam_obj)
                 mask_npy = masks.clone().cpu().numpy()[0] * 1
+            
+            #if 'mask_image' in self.datamanager.train_data[cam_idx].keys():
+                mask = self.datamanager.train_data[cam_idx]['mask_image']
+                mask_npy = mask.clone().cpu().numpy() * 1
 
-            if self.config.langsam_obj != "":
                 self.update_datasets(cam_idx, rendered_rgb.cpu(), rendered_depth, latent, mask_npy)
             else: 
                 self.update_datasets(cam_idx, rendered_rgb.cpu(), rendered_depth, latent, None)
@@ -172,14 +185,14 @@ class GaussCtrlPipeline(VanillaPipeline):
         CONSOLE.print("Start Editing: ", style="bold yellow")
         CONSOLE.print(f"Reference views are {[j+1 for j in self.ref_indices]}", style="bold yellow")
         print("#############################")
-        ref_disparity_list = []
+        ref_disparity_list = [] 
         ref_z0_list = []
         for ref_idx in self.ref_indices:
             ref_data = deepcopy(self.datamanager.train_data[ref_idx]) 
             ref_disparity = self.depth2disparity(ref_data['depth_image']) 
             ref_z0 = ref_data['z_0_image']
             ref_disparity_list.append(ref_disparity)
-            ref_z0_list.append(ref_z0) 
+            ref_z0_list.append(ref_z0)
             
         ref_disparities = np.concatenate(ref_disparity_list, axis=0)
         ref_z0s = np.concatenate(ref_z0_list, axis=0)
@@ -192,6 +205,7 @@ class GaussCtrlPipeline(VanillaPipeline):
             
             indices = [current_data['image_idx'] for current_data in chunked_data]
             mask_images = [current_data['mask_image'] for current_data in chunked_data if 'mask_image' in current_data.keys()] 
+            #mask_images = []
             unedited_images = [current_data['unedited_image'] for current_data in chunked_data]
             CONSOLE.print(f"Generating view: {indices}", style="bold yellow")
 
@@ -225,11 +239,18 @@ class GaussCtrlPipeline(VanillaPipeline):
 
                 bg_cntrl_edited_image = edited_image
                 if mask_images != []:
-                    mask = torch.from_numpy(mask_images[local_idx])
+                    mask = torch.from_numpy(np.array(mask_images[local_idx]))
                     bg_mask = 1 - mask
 
                     unedited_image = unedited_images[local_idx].permute(2,0,1)
                     bg_cntrl_edited_image = edited_image * mask[None] + unedited_image * bg_mask[None] 
+
+                #edited_image_np = (bg_cntrl_edited_image.permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
+#
+                ## Create a PIL image from the NumPy array
+                #edited_image_pil = Image.fromarray(edited_image_np)
+                ## Save the PIL image
+                #edited_image_pil.save(f'./edited_image_{global_idx}.png')
 
                 self.datamanager.train_data[global_idx]["image"] = bg_cntrl_edited_image.permute(1,2,0).to(torch.float32) # [512 512 3]
         print("#############################")
@@ -283,9 +304,34 @@ class GaussCtrlPipeline(VanillaPipeline):
         
         metrics_dict = self.model.get_metrics_dict(model_outputs, batch)
         loss_dict = self.model.get_loss_dict(model_outputs, batch, metrics_dict)
-
-        return model_outputs, loss_dict, metrics_dict
+        #if step%50 == 0:
+        # self.save_imgs(model_outputs, batch, step)
+         
+        return model_outputs, loss_dict, metrics_dict, batch
 
     def forward(self):
         """Not implemented since we only want the parameter saving of the nn module, but not forward()"""
         raise NotImplementedError
+    
+    def save_imgs(self, model_outputs, batch, step):
+        # Convert the tensors to NumPy arrays and scale them to the range [0, 255]
+        unedited_image_np = (batch['unedited_image'].cpu().numpy() * 255).astype(np.uint8)
+        batch_image_np = (batch['image'].cpu().numpy() * 255).astype(np.uint8)
+        model_outputs_rgb_np = (model_outputs['rgb'].detach().cpu().numpy() * 255).astype(np.uint8)
+
+        # Create PIL images from the NumPy arrays
+        unedited_image_pil = Image.fromarray(unedited_image_np)
+        batch_image_pil = Image.fromarray(batch_image_np)
+        model_outputs_rgb_pil = Image.fromarray(model_outputs_rgb_np)
+
+        # Concatenate the images horizontally
+        combined_width = unedited_image_pil.width + batch_image_pil.width + model_outputs_rgb_pil.width
+        combined_height = unedited_image_pil.height
+        combined_image = Image.new('RGB', (combined_width, combined_height))
+        combined_image.paste(unedited_image_pil, (0, 0))
+        combined_image.paste(batch_image_pil, (unedited_image_pil.width, 0))
+        combined_image.paste(model_outputs_rgb_pil, (unedited_image_pil.width + batch_image_pil.width, 0))
+
+        # Save the combined image
+        combined_image.save(f'/home/ddinucci/Desktop/gaussctrl/check/retrain/step_{step}.png')
+        return

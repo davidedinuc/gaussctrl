@@ -103,8 +103,10 @@ class GaussCtrlModel(SplatfactoModel):
         R_inv = R.T
         T_inv = -R_inv @ T
         viewmat = torch.eye(4, device=R.device, dtype=R.dtype)
-        viewmat[:3, :3] = R_inv
-        viewmat[:3, 3:4] = T_inv
+        #viewmat[:3, :3] = R_inv #TODO modificato questa parte
+        #viewmat[:3, 3:4] = T_inv
+        viewmat[:3, :3] = camera.camera_to_worlds[0, :3, :3]
+        viewmat[:3, 3:4] = camera.camera_to_worlds[0, :3, 3:4]
         # calculate the FOV of the camera given fx and fy, width and height
         cx = camera.cx.item()
         cy = camera.cy.item()

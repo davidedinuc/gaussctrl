@@ -23,6 +23,10 @@ import time
 from rich import box, style
 from rich.panel import Panel
 from rich.table import Table
+import matplotlib.pyplot as plt
+from pathlib import Path
+from PIL import Image
+import numpy as np
 
 import torch
 from nerfstudio.engine.trainer import Trainer, TrainerConfig
@@ -35,10 +39,27 @@ from nerfstudio.utils.misc import step_check
 from nerfstudio.utils.rich_utils import CONSOLE
 from nerfstudio.viewer_legacy.server.viewer_state import ViewerLegacyState
 from nerfstudio.viewer.viewer import Viewer as ViewerState
+from gaussctrl.uco_utils import create_transforms_from_uco, load_uco_data
 
 TRAIN_INTERATION_OUTPUT = Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, torch.Tensor]]
 TORCH_DEVICE = str
 
+def plot_loss(total_loss):
+        # Extract keys (training steps) and values (loss values)
+        steps = list(total_loss.keys())
+        loss_values = list(total_loss.values())
+
+        # Create a plot
+        plt.figure(figsize=(10, 5))
+        plt.plot(steps, loss_values, marker='o', linestyle='-', color='b')
+
+        # Add labels and title
+        plt.xlabel('Training Step')
+        plt.ylabel('Loss Value')
+        plt.title('Training Loss over Steps')
+        plt.savefig('/home/ddinucci/Desktop/gaussctrl/check/retrain/training_loss.png')
+        return
+        
 @dataclass
 class GaussCtrlTrainerConfig(TrainerConfig):
     """Configuration for the GaussCtrlTrainer."""
@@ -64,16 +85,21 @@ class GaussCtrlTrainer(Trainer):
                 'test': loads train/test datasets into memory
                 'inference': does not load any dataset into memory
         """
-        self.pipeline = self.config.pipeline.setup(
+        if True: #Aggiungi una condizione per entrare qua dentro
+            #create_transforms_from_uco()
+            self.uco_dataloader = load_uco_data(self.config.pipeline.scene_name, batch=1)
+        self.pipeline = self.config.pipeline.setup( #TODO qui carica il dataset, carica anche le immagini di GT, non so se siano utili
             device=self.device,
             test_mode=test_mode,
             world_size=self.world_size,
             local_rank=self.local_rank,
             grad_scaler=self.grad_scaler,
+            uco_data=self.uco_dataloader,
         )
+        
         self.optimizers = self.setup_optimizers()
-        self._load_checkpoint()
-        self.pipeline.render_reverse()
+        self._load_checkpoint(uco_data=self.uco_data) #TODO load checkpoint here
+        self.pipeline.render_reverse() #TODO HERE LOAD RENDERED IMAGES AND DEPTH MAP
         if self.pipeline.test_mode == "val":
             self.pipeline.edit_images()
 
@@ -180,10 +206,13 @@ class GaussCtrlTrainer(Trainer):
         self.pipeline.datamanager.train_dataparser_outputs.save_dataparser_transform(
             self.base_dir / "dataparser_transforms.json"
         )
-        
+        # Create the directory if it doesn't exist
+        self.render_dir = self.base_dir / "train_render"
+        Path(self.render_dir).mkdir(parents=True, exist_ok=True)
         self._init_viewer_state()
         with TimeWriter(writer, EventName.TOTAL_TRAIN_TIME):
-            num_iterations = self.pipeline.config.render_rate
+            num_iterations = self.pipeline.config.render_rate + 10000
+            total_loss = {}
             for step in range(self._start_step, self._start_step + num_iterations):
                 while self.training_state == "paused":
                     time.sleep(0.01)
@@ -205,6 +234,8 @@ class GaussCtrlTrainer(Trainer):
                             callback.run_callback_at_location(
                                 step, location=TrainingCallbackLocation.AFTER_TRAIN_ITERATION
                             )
+                        if step%10 == 0:
+                            total_loss[step] = loss_dict['main_loss'].detach().cpu().numpy().item()
 
                 self._update_viewer_state(step)
 
@@ -230,6 +261,7 @@ class GaussCtrlTrainer(Trainer):
                     self.save_checkpoint(step)
 
                 writer.write_out_storage()
+        #plot_loss(total_loss)        
 
         # save checkpoint at the end of training
         self.save_checkpoint(step)
@@ -254,6 +286,8 @@ class GaussCtrlTrainer(Trainer):
         if not self.config.viewer.quit_on_train_completion:
             self._train_complete_viewer()
 
+    
+
     @profiler.time_function
     def train_iteration(self, step: int) -> TRAIN_INTERATION_OUTPUT:
         """Run one iteration with a batch of inputs. Returns dictionary of model losses.
@@ -270,8 +304,12 @@ class GaussCtrlTrainer(Trainer):
         cpu_or_cuda_str = "cpu" if cpu_or_cuda_str == "mps" else cpu_or_cuda_str
         
         with torch.autocast(device_type=cpu_or_cuda_str, enabled=self.mixed_precision):
-            _, loss_dict, metrics_dict = self.pipeline.get_train_loss_dict(step=step)
+            _, loss_dict, metrics_dict, batch = self.pipeline.get_train_loss_dict(step=step)
             loss = functools.reduce(torch.add, loss_dict.values())
+
+            if step%50 == 0:
+                self.save_imgs(_, batch, step, self.render_dir)
+
         self.grad_scaler.scale(loss).backward()  # type: ignore
         needs_step = [
             group
@@ -299,3 +337,26 @@ class GaussCtrlTrainer(Trainer):
 
         # Merging loss and metrics dict into a single output.
         return loss, loss_dict, metrics_dict  # type: ignore
+    
+    def save_imgs(self, model_outputs, batch, step, path):
+        # Convert the tensors to NumPy arrays and scale them to the range [0, 255]
+        unedited_image_np = (batch['unedited_image'].cpu().numpy() * 255).astype(np.uint8)
+        batch_image_np = (batch['image'].cpu().numpy() * 255).astype(np.uint8)
+        model_outputs_rgb_np = (model_outputs['rgb'].detach().cpu().numpy() * 255).astype(np.uint8)
+
+        # Create PIL images from the NumPy arrays
+        unedited_image_pil = Image.fromarray(unedited_image_np)
+        batch_image_pil = Image.fromarray(batch_image_np)
+        model_outputs_rgb_pil = Image.fromarray(model_outputs_rgb_np)
+
+        # Concatenate the images horizontally
+        combined_width = unedited_image_pil.width + batch_image_pil.width + model_outputs_rgb_pil.width
+        combined_height = unedited_image_pil.height
+        combined_image = Image.new('RGB', (combined_width, combined_height))
+        combined_image.paste(unedited_image_pil, (0, 0))
+        combined_image.paste(batch_image_pil, (unedited_image_pil.width, 0))
+        combined_image.paste(model_outputs_rgb_pil, (unedited_image_pil.width + batch_image_pil.width, 0))
+
+        # Save the combined image
+        combined_image.save(f'{path}/step_{step}.png')
+        return

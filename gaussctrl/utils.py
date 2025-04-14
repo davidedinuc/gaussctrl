@@ -53,6 +53,7 @@ class CrossViewAttnProcessor:
         residual = hidden_states
         
         args = () if USE_PEFT_BACKEND else (scale,)
+        #args = (scale,)
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)

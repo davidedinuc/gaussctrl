@@ -33,6 +33,9 @@ from nerfstudio.model_components import losses
 from nerfstudio.utils.misc import torch_compile
 from nerfstudio.utils.rich_utils import CONSOLE
 
+from uco3d import UCO3DDataset
+from gaussctrl.uco_utils import create_transforms_from_uco, load_uco_data
+
 def get_depth_z_0_image_from_path(
     filepath: Path,
     height: int,
@@ -76,7 +79,7 @@ class GCDataset(InputDataset):
         scale_factor: The scaling factor for the dataparser outputs.
     """
 
-    def __init__(self, dataparser_outputs: DataparserOutputs, scale_factor: float = 1.0):
+    def __init__(self, dataparser_outputs: DataparserOutputs, scale_factor: float = 1.0, uco_data: UCO3DDataset = None):
         super().__init__(dataparser_outputs, scale_factor)
         if 'depth_filenames' in self.metadata.keys():
             self.depth_filenames = self.metadata["depth_filenames"]
@@ -86,15 +89,21 @@ class GCDataset(InputDataset):
             self.unedited_image_filenames = self.metadata["unedited_image_filenames"]
         if 'mask_filenames' in self.metadata.keys():
             self.mask_filenames = self.metadata["mask_filenames"]
+        if uco_data is not None:
+            self.uco_data = uco_data
 
-    def get_data(self, image_idx: int, image_type: Literal["uint8", "float32"] = "float32") -> Dict:
+    def get_data(self, image_idx: int, image_type: Literal["uint8", "float32"] = "float32", uco_data: UCO3DDataset = None) -> Dict:
         """Returns the ImageDataset data as a dictionary.
 
         Args:
             image_idx: The image index in the dataset.
             image_type: the type of images returned
         """
-        if image_type == "float32":
+        if uco_data is not None:
+            image = uco_data['image_rgb'][0].permute(1, 2, 0)
+            
+            
+        elif image_type == "float32":
             image = self.get_image_float32(image_idx) # [512 512 3] 0-1
         elif image_type == "uint8":
             image = self.get_image_uint8(image_idx)
@@ -102,7 +111,9 @@ class GCDataset(InputDataset):
             raise NotImplementedError(f"image_type (={image_type}) getter was not implemented, use uint8 or float32")
         
         data = {"image_idx": image_idx, "image": image}
-        metadata = self.get_metadata(data)
+
+
+        metadata = self.get_metadata(uco_data=uco_data, data=data)
         data.update(metadata)
         return data
 
@@ -126,10 +137,18 @@ class GCDataset(InputDataset):
         assert image.shape[2] in [3, 4], f"Image shape of {image.shape} is in correct."
         return image
 
-    def get_metadata(self, data: Dict) -> Dict:
+    def get_metadata(self, uco_data, data: Dict) -> Dict:
         meta = {}
         height = int(self._dataparser_outputs.cameras.height[data["image_idx"]])
-        width = int(self._dataparser_outputs.cameras.width[data["image_idx"]])
+        width =  int(self._dataparser_outputs.cameras.width[data["image_idx"]])
+        
+        if uco_data is not None:
+            img_data = data["image_idx"]
+            #meta["depth_image"] = img_data['depth_map'][0]
+            #meta["mask_image"] = img_data['mask_crop'][0]
+            meta["mask_image"] = (uco_data['fg_probability'] > 0).float()
+            meta["unedited_image"] = data['image']
+            return meta
         
         if 'depth_filenames' in self.metadata.keys():
             depth_filepath = self.depth_filenames[data["image_idx"]]

@@ -47,6 +47,8 @@ from gaussctrl.gc_dataset import GCDataset
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from gaussctrl import utils
 
+from uco3d import UCO3DDataset, UCO3DFrameDataBuilder, opencv_cameras_projection_from_uco3d
+from gaussctrl.uco_utils import create_transforms_from_uco, load_uco_data
 
 
 CONSOLE = Console(width=120)
@@ -65,7 +67,6 @@ class GaussCtrlDataManagerConfig(FullImageDatamanagerConfig):
     load_all: bool = False
     """Set it to True if you want to edit all the images in the dataset"""
 
-
 class GaussCtrlDataManager(FullImageDatamanager, Generic[TDataset]):
     """Data manager for GaussCtrl."""
 
@@ -79,8 +80,9 @@ class GaussCtrlDataManager(FullImageDatamanager, Generic[TDataset]):
                 test_mode: Literal["test", "val", "inference"] = "val",
                 world_size: int = 1,
                 local_rank: int = 0,
+                uco_data: UCO3DDataset = None,
                 **kwargs,):
-        super().__init__(config, device, test_mode, world_size, local_rank)
+        super().__init__(config, device, test_mode, world_size, local_rank, uco_data)
 
         self.sample_idx = []
         self.step_every = 1
@@ -109,13 +111,16 @@ class GaussCtrlDataManager(FullImageDatamanager, Generic[TDataset]):
                 self.train_data.append(data)
             self.train_unseen_cameras = list(range(self.config.subset_num * self.config.sampled_views_every_subset))
         
-    def cache_images(self, cache_images_option):
+    def cache_images(self, cache_images_option, uco_data):
         cached_train = []
         cached_eval = []
         CONSOLE.log("Caching / undistorting train images")
+        iterator = iter(uco_data)
+        #iterator = iter(uco_data)
         for i in tqdm(range(len(self.train_dataset)), leave=False):
             # cv2.undistort the images / cameras
-            data = self.train_dataset.get_data(i, image_type=self.config.cache_images_type)
+            frame=next(iterator)
+            data = self.train_dataset.get_data(i, image_type=self.config.cache_images_type, uco_data=frame)
             camera = self.train_dataset.cameras[i].reshape(())
             K = camera.get_intrinsics_matrices().numpy()
             if camera.distortion_params is None:
@@ -138,31 +143,31 @@ class GaussCtrlDataManager(FullImageDatamanager, Generic[TDataset]):
             self.train_dataset.cameras.width[i] = image.shape[1]
             self.train_dataset.cameras.height[i] = image.shape[0]
 
-        CONSOLE.log("Caching / undistorting eval images")
-        for i in tqdm(range(len(self.eval_dataset)), leave=False):
-            # cv2.undistort the images / cameras
-            data = self.eval_dataset.get_data(i, image_type=self.config.cache_images_type)
-            camera = self.eval_dataset.cameras[i].reshape(())
-            K = camera.get_intrinsics_matrices().numpy()
-            if camera.distortion_params is None:
-                cached_eval.append(data)
-                continue
-            distortion_params = camera.distortion_params.numpy()
-            image = data["image"].numpy()
-
-            K, image, mask = _undistort_image(camera, distortion_params, data, image, K)
-            data["image"] = torch.from_numpy(image)
-            if mask is not None:
-                data["mask"] = mask
-
-            cached_eval.append(data)
-
-            self.eval_dataset.cameras.fx[i] = float(K[0, 0])
-            self.eval_dataset.cameras.fy[i] = float(K[1, 1])
-            self.eval_dataset.cameras.cx[i] = float(K[0, 2])
-            self.eval_dataset.cameras.cy[i] = float(K[1, 2])
-            self.eval_dataset.cameras.width[i] = image.shape[1]
-            self.eval_dataset.cameras.height[i] = image.shape[0]
+        CONSOLE.log("Caching / undistorting eval images") #TODO questa parte è necessaria?
+        #for i in tqdm(range(len(self.eval_dataset)), leave=False):
+        #    # cv2.undistort the images / cameras
+        #    data = self.eval_dataset.get_data(i, image_type=self.config.cache_images_type)
+        #    camera = self.eval_dataset.cameras[i].reshape(())
+        #    K = camera.get_intrinsics_matrices().numpy()
+        #    if camera.distortion_params is None:
+        #        cached_eval.append(data)
+        #        continue
+        #    distortion_params = camera.distortion_params.numpy()
+        #    image = data["image"].numpy()
+#
+        #    K, image, mask = _undistort_image(camera, distortion_params, data, image, K)
+        #    data["image"] = torch.from_numpy(image)
+        #    if mask is not None:
+        #        data["mask"] = mask
+#
+        #    cached_eval.append(data)
+#
+        #    self.eval_dataset.cameras.fx[i] = float(K[0, 0])
+        #    self.eval_dataset.cameras.fy[i] = float(K[1, 1])
+        #    self.eval_dataset.cameras.cx[i] = float(K[0, 2])
+        #    self.eval_dataset.cameras.cy[i] = float(K[1, 2])
+        #    self.eval_dataset.cameras.width[i] = image.shape[1]
+        #    self.eval_dataset.cameras.height[i] = image.shape[0]
 
         if cache_images_option == "gpu":
             for cache in cached_train:
