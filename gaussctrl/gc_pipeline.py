@@ -243,7 +243,7 @@ class GaussCtrlPipeline(VanillaPipeline):
                     bg_mask = 1 - mask
 
                     unedited_image = unedited_images[local_idx].permute(2,0,1)
-                    bg_cntrl_edited_image = edited_image * mask[None] + unedited_image * bg_mask[None] 
+                    bg_cntrl_edited_image = edited_image * mask[0] + unedited_image * bg_mask[0] 
 
                 #edited_image_np = (bg_cntrl_edited_image.permute(1,2,0).cpu().numpy() * 255).astype(np.uint8)
 #

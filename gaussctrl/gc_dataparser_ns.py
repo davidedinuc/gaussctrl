@@ -109,14 +109,14 @@ class GaussCtrlDataParser(DataParser):
 
     def _generate_parser_uco(self, uco_data, split):
         '''load data to train from the sample trajectory''' 
-        assert self.config.data.exists(), f"Data directory {self.config.data} does not exist."
+        #assert self.config.data.exists(), f"Data directory {self.config.data} does not exist."
 
-        if self.config.data.suffix == ".json":
-            meta = load_from_json(self.config.data)
-            data_dir = self.config.data.parent
-        else:
-            meta = load_from_json(self.config.data / "transforms.json")
-            data_dir = self.config.data
+        #if self.config.data.suffix == ".json":
+        #    meta = load_from_json(self.config.data)
+        #    data_dir = self.config.data.parent
+        #else:
+        #    meta = load_from_json(self.config.data / "transforms.json")
+        #    data_dir = self.config.data
 
         image_filenames = []
         mask_filenames = []
@@ -127,14 +127,14 @@ class GaussCtrlDataParser(DataParser):
         fy_fixed = False
         cx_fixed = False
         cy_fixed = False
-        height_fixed = "h" in meta
-        width_fixed = "w" in meta
+        #height_fixed = "h" in meta
+        #width_fixed = "w" in meta
         distort_fixed = False
         for distort_key in ["k1", "k2", "k3", "p1", "p2", "distortion_params"]:
-            if distort_key in meta:
+            #if distort_key in meta:
                 distort_fixed = True
                 break #TODO controlla i parametri di distorsione di uco
-        fisheye_crop_radius = meta.get("fisheye_crop_radius", None)
+        #fisheye_crop_radius = meta.get("fisheye_crop_radius", None)
         fx = []
         fy = []
         cx = []
@@ -145,11 +145,11 @@ class GaussCtrlDataParser(DataParser):
 
         # sort the frames by fname
         fnames = []
-        for frame in meta["frames"]:
-            filepath = Path(frame["file_path"])
-            fname = self._get_fname(filepath, data_dir)
-            fnames.append(fname)
-        inds = np.argsort(fnames)
+        #for frame in meta["frames"]:
+        #    filepath = Path(frame["file_path"])
+        #    fname = self._get_fname(filepath, data_dir)
+        #    fnames.append(fname)
+        #inds = np.argsort(fnames)
         #frames = [meta["frames"][ind] for ind in inds]
         iterator = iter(uco_data['data'])
 
@@ -176,21 +176,21 @@ class GaussCtrlDataParser(DataParser):
                 cx.append(float(camera_matrix[0,0,2]))
             if not cy_fixed:
                 cy.append(float(camera_matrix[0,1,2]))
-            if not height_fixed:
-                assert "h" in frame, "height not specified in frame"
-                height.append(int(frame["h"]))
-            if not width_fixed:
-                assert "w" in frame, "width not specified in frame"
-                width.append(int(frame["w"]))
+            #if not height_fixed:
+            #    assert "h" in frame, "height not specified in frame"
+            #    height.append(int(frame["h"]))
+            #if not width_fixed:
+            #    assert "w" in frame, "width not specified in frame"
+            #    width.append(int(frame["w"]))
             masks.append((frame['fg_probability'] > 0).float())
             poses.append(np.array(pose))
 
-        if "orientation_override" in meta:
-            orientation_method = meta["orientation_override"]
-            CONSOLE.log(f"[yellow] Dataset is overriding orientation method to {orientation_method}")
-        else:
-            orientation_method = self.config.orientation_method
-
+        #if "orientation_override" in meta:
+        #    orientation_method = meta["orientation_override"]
+        #    CONSOLE.log(f"[yellow] Dataset is overriding orientation method to {orientation_method}")
+        #else:
+        #    orientation_method = self.config.orientation_method
+        orientation_method = 'up'
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
         #poses, transform_matrix = camera_utils.auto_orient_and_center_poses(
         _, transform_matrix = camera_utils.auto_orient_and_center_poses(
@@ -204,6 +204,7 @@ class GaussCtrlDataParser(DataParser):
         if self.config.auto_scale_poses:
             scale_factor /= float(torch.max(torch.abs(poses[:, :3, 3])))
         scale_factor *= self.config.scale_factor
+        self.downscale_factor = 1
         #TODO check this
         scale_factor=1.0
         poses[:, :3, 3] *= scale_factor
@@ -215,23 +216,26 @@ class GaussCtrlDataParser(DataParser):
             )
         )
 
-        if "camera_model" in meta:
-            camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
-        else:
-            camera_type = CameraType.PERSPECTIVE
+        #if "camera_model" in meta:
+        #    camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
+        #else:
+        #    camera_type = CameraType.PERSPECTIVE
 
-        fx = float(meta["fl_x"]) if fx_fixed else torch.tensor(fx, dtype=torch.float32)#[idx_tensor]
-        fy = float(meta["fl_y"]) if fy_fixed else torch.tensor(fy, dtype=torch.float32)#[idx_tensor]
-        cx = float(meta["cx"]) if cx_fixed else torch.tensor(cx, dtype=torch.float32)#[idx_tensor]
-        cy = float(meta["cy"]) if cy_fixed else torch.tensor(cy, dtype=torch.float32)#[idx_tensor]
-        height = int(meta["h"]) if height_fixed else torch.tensor(height, dtype=torch.int32)#[idx_tensor]
-        width = int(meta["w"]) if width_fixed else torch.tensor(width, dtype=torch.int32)#[idx_tensor]
+        fx =   torch.tensor(fx, dtype=torch.float32)#[idx_tensor]
+        fy =   torch.tensor(fy, dtype=torch.float32)#[idx_tensor]
+        cx =    torch.tensor(cx, dtype=torch.float32)#[idx_tensor]
+        cy =    torch.tensor(cy, dtype=torch.float32)#[idx_tensor]
+        height = int(512)
+        width = int(512) 
+        #height =  torch.tensor(height, dtype=torch.int32)#[idx_tensor]
+        #width =   torch.tensor(width, dtype=torch.int32)#[idx_tensor]
 
         # Only add fisheye crop radius parameter if the images are actually fisheye, to allow the same config to be used
         # for both fisheye and non-fisheye datasets.
         metadata = {}
-        if (camera_type in [CameraType.FISHEYE, CameraType.FISHEYE624]) and (fisheye_crop_radius is not None):
-            metadata["fisheye_crop_radius"] = fisheye_crop_radius
+        #if (camera_type in [CameraType.FISHEYE, CameraType.FISHEYE624]) and (fisheye_crop_radius is not None):
+        #    metadata["fisheye_crop_radius"] = fisheye_crop_radius
+        camera_type = CAMERA_MODEL_TO_TYPE['OPENCV']
 
         cameras = Cameras(
             fx=fx,
@@ -244,7 +248,7 @@ class GaussCtrlDataParser(DataParser):
             camera_type=camera_type,
             metadata=metadata,
         )
-        
+
         assert self.downscale_factor is not None
         cameras.rescale_output_resolution(scaling_factor=1.0 / self.downscale_factor)
 
@@ -254,27 +258,29 @@ class GaussCtrlDataParser(DataParser):
         # - applied_transform contains the transformation to saved coordinates from original data coordinates.
         applied_transform = None
         colmap_path = self.config.data / "colmap/sparse/0"
-        if "applied_transform" in meta:
-            applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
-        elif colmap_path.exists():
-            # For converting from colmap, this was the effective value of applied_transform that was being
-            # used before we added the applied_transform field to the output dataformat.
-            meta["applied_transform"] = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, -1, 0]]
-            applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
+        #if "applied_transform" in meta:
+        #    applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
+        #elif colmap_path.exists():
+        #    # For converting from colmap, this was the effective value of applied_transform that was being
+        #    # used before we added the applied_transform field to the output dataformat.
+        #    meta["applied_transform"] = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, -1, 0]]
+        #    applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
 
-        if applied_transform is not None:
-            dataparser_transform_matrix = transform_matrix @ torch.cat(
-                [applied_transform, torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype)], 0
-            )
-            #dataparser_transform_matrix = (torch.eye(4) @ torch.cat(
-            #    [applied_transform, torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype)], 0
-            #))[:3,:]
-        else:
-            dataparser_transform_matrix = transform_matrix
+        #if applied_transform is not None:
+        transform = [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, -1, 0]]
+        applied_transform = torch.tensor(transform, dtype=transform_matrix.dtype)
+        dataparser_transform_matrix = transform_matrix @ torch.cat(
+            [applied_transform, torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype)], 0
+        )
+        #    #dataparser_transform_matrix = (torch.eye(4) @ torch.cat(
+        #    #    [applied_transform, torch.tensor([[0, 0, 0, 1]], dtype=transform_matrix.dtype)], 0
+        #    #))[:3,:]
+        #else:
+        #    dataparser_transform_matrix = transform_matrix
 
-        if "applied_scale" in meta:
-            applied_scale = float(meta["applied_scale"])
-            scale_factor *= applied_scale
+        #if "applied_scale" in meta:
+        #    applied_scale = float(meta["applied_scale"])
+        #    scale_factor *= applied_scale
 
         # reinitialize metadata for dataparser_outputs
         metadata = {}
@@ -287,8 +293,7 @@ class GaussCtrlDataParser(DataParser):
 
         # Load 3D points
         if self.config.load_3D_points:
-            if "ply_file_path" in meta:
-                ply_file_path = uco_data['ply_path']  # data_dir / meta["ply_file_path"]
+            ply_file_path = uco_data['ply_path']  # data_dir / meta["ply_file_path"]
 
             if ply_file_path:
                 sparse_points = self._load_3D_points(ply_file_path, transform_matrix, scale_factor)

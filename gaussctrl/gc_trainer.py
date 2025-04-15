@@ -98,7 +98,7 @@ class GaussCtrlTrainer(Trainer):
         )
         
         self.optimizers = self.setup_optimizers()
-        self._load_checkpoint(uco_data=self.uco_data) #TODO load checkpoint here
+        self._load_checkpoint(uco_data=self.uco_dataloader['splats']) #TODO load checkpoint here
         self.pipeline.render_reverse() #TODO HERE LOAD RENDERED IMAGES AND DEPTH MAP
         if self.pipeline.test_mode == "val":
             self.pipeline.edit_images()
@@ -211,7 +211,7 @@ class GaussCtrlTrainer(Trainer):
         Path(self.render_dir).mkdir(parents=True, exist_ok=True)
         self._init_viewer_state()
         with TimeWriter(writer, EventName.TOTAL_TRAIN_TIME):
-            num_iterations = self.pipeline.config.render_rate + 10000
+            num_iterations = self.pipeline.config.render_rate + 1000
             total_loss = {}
             for step in range(self._start_step, self._start_step + num_iterations):
                 while self.training_state == "paused":
