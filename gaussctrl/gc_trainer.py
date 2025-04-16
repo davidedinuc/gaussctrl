@@ -87,7 +87,7 @@ class GaussCtrlTrainer(Trainer):
         """
         if True: #Aggiungi una condizione per entrare qua dentro
             #create_transforms_from_uco()
-            self.uco_dataloader = load_uco_data(self.config.pipeline.scene_name, batch=1)
+            self.uco_dataloader = load_uco_data(self.config.pipeline.scene_name, batch=1, subset_lists_file=self.config.pipeline.sql_path)
         self.pipeline = self.config.pipeline.setup( #TODO qui carica il dataset, carica anche le immagini di GT, non so se siano utili
             device=self.device,
             test_mode=test_mode,

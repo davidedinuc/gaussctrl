@@ -72,9 +72,12 @@ class GaussCtrlPipelineConfig(VanillaPipelineConfig):
     """Number of reference frames"""
     diffusion_ckpt: str = 'CompVis/stable-diffusion-v1-4'
     """Diffusion checkpoints"""
-    
+
     scene_name: str = "scene"
     """The name of the scene. Used for selecting the dataset."""
+
+    sql_path: str = "sql_path"
+    """Used for selecting the dataset."""
 class GaussCtrlPipeline(VanillaPipeline):
     """GaussCtrl pipeline"""
 

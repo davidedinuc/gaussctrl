@@ -2,18 +2,18 @@ from uco3d import UCO3DDataset, UCO3DFrameDataBuilder
 from uco3d.dataset_utils.utils import get_dataset_root
 from uco3d.data_utils import load_whole_sequence
 import os
-os.environ['UCO3D_DATASET_ROOT'] = '/home/ddinucci/Desktop/uco3d/small'
+#os.environ['UCO3D_DATASET_ROOT'] = '/home/ddinucci/Desktop/uco3d/small'
 
-def load_uco_data(scene_name, batch = 0):
-    dataset_root = get_dataset_root(assert_exists=True)
-    # Get the "small" subset list containing a small subset
-    # of the uCO3D categories. For loading the whole dataset
-    # use "set_lists_all-categories.sqlite".
-    subset_lists_file = os.path.join(
-        dataset_root,
-        "set_lists", 
-        "set_lists_test_10.sqlite",
-    )
+def load_uco_data(scene_name, batch = 0, subset_lists_file = "/home/ddinucci/Desktop/uco3d/small/set_lists/set_lists_test_10.sqlite"):
+    #dataset_root = get_dataset_root(assert_exists=True)
+    ## Get the "small" subset list containing a small subset
+    ## of the uCO3D categories. For loading the whole dataset
+    ## use "set_lists_all-categories.sqlite".
+    #subset_lists_file = os.path.join(
+    #    dataset_root,
+    #    "set_lists", 
+    #    "set_lists_test_10.sqlite",
+    #)s
     uco_dataset = UCO3DDataset(
     subset_lists_file=subset_lists_file,
     subsets=["train"],
