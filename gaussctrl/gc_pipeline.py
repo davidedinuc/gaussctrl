@@ -213,7 +213,7 @@ class GaussCtrlPipeline(VanillaPipeline):
                 mask_images = [current_data['mask_image'] for current_data in chunked_data if 'mask_image' in current_data.keys()]
             else:
                 mask_images = []
-                
+
             unedited_images = [current_data['unedited_image'] for current_data in chunked_data]
             CONSOLE.print(f"Generating view: {indices}", style="bold yellow")
 
@@ -321,25 +321,4 @@ class GaussCtrlPipeline(VanillaPipeline):
         """Not implemented since we only want the parameter saving of the nn module, but not forward()"""
         raise NotImplementedError
     
-    def save_imgs(self, model_outputs, batch, step):
-        # Convert the tensors to NumPy arrays and scale them to the range [0, 255]
-        unedited_image_np = (batch['unedited_image'].cpu().numpy() * 255).astype(np.uint8)
-        batch_image_np = (batch['image'].cpu().numpy() * 255).astype(np.uint8)
-        model_outputs_rgb_np = (model_outputs['rgb'].detach().cpu().numpy() * 255).astype(np.uint8)
 
-        # Create PIL images from the NumPy arrays
-        unedited_image_pil = Image.fromarray(unedited_image_np)
-        batch_image_pil = Image.fromarray(batch_image_np)
-        model_outputs_rgb_pil = Image.fromarray(model_outputs_rgb_np)
-
-        # Concatenate the images horizontally
-        combined_width = unedited_image_pil.width + batch_image_pil.width + model_outputs_rgb_pil.width
-        combined_height = unedited_image_pil.height
-        combined_image = Image.new('RGB', (combined_width, combined_height))
-        combined_image.paste(unedited_image_pil, (0, 0))
-        combined_image.paste(batch_image_pil, (unedited_image_pil.width, 0))
-        combined_image.paste(model_outputs_rgb_pil, (unedited_image_pil.width + batch_image_pil.width, 0))
-
-        # Save the combined image
-        combined_image.save(f'/home/ddinucci/Desktop/gaussctrl/check/retrain/step_{step}.png')
-        return

@@ -120,7 +120,7 @@ class GaussCtrlDataParser(DataParser):
 
         image_filenames = []
         mask_filenames = []
-        depth_filenames = []
+
         poses = []
         masks = []
         fx_fixed = False
@@ -131,7 +131,7 @@ class GaussCtrlDataParser(DataParser):
         #width_fixed = "w" in meta
         distort_fixed = False
         for distort_key in ["k1", "k2", "k3", "p1", "p2", "distortion_params"]:
-            if distort_key in meta:
+            #if distort_key in meta:
                 distort_fixed = True
                 break #TODO controlla i parametri di distorsione di uco
         #fisheye_crop_radius = meta.get("fisheye_crop_radius", None)
@@ -141,10 +141,10 @@ class GaussCtrlDataParser(DataParser):
         cy = []
         height = []
         width = []
-        distort = []
+        #distort = []
 
         # sort the frames by fname
-        fnames = []
+        #fnames = []
         #for frame in meta["frames"]:
         #    filepath = Path(frame["file_path"])
         #    fname = self._get_fname(filepath, data_dir)

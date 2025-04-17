@@ -115,12 +115,12 @@ class GaussCtrlDataManager(FullImageDatamanager, Generic[TDataset]):
         cached_train = []
         cached_eval = []
         CONSOLE.log("Caching / undistorting train images")
-        iterator = iter(uco_data)
+
         #iterator = iter(uco_data)
         for i in tqdm(range(len(self.train_dataset)), leave=False):
             # cv2.undistort the images / cameras
-            frame=next(iterator)
-            data = self.train_dataset.get_data(i, image_type=self.config.cache_images_type, uco_data=frame)
+            #frame=next(iterator)
+            data = self.train_dataset.get_data(i, image_type=self.config.cache_images_type, uco_data=self.train_dataset.metadata['masks'][i])
             camera = self.train_dataset.cameras[i].reshape(())
             K = camera.get_intrinsics_matrices().numpy()
             if camera.distortion_params is None:

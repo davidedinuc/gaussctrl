@@ -21,7 +21,7 @@ def load_uco_data(scene_name, batch = 0, subset_lists_file = "/home/ddinucci/Des
     #pick_sequences=[scene_name],
     frame_data_builder=UCO3DFrameDataBuilder(
         apply_alignment=False,
-        load_images=True,
+        load_images=False,
         load_depths=False,
         load_masks=True,
         load_depth_masks=False,

@@ -100,7 +100,7 @@ class GCDataset(InputDataset):
             image_type: the type of images returned
         """
         if uco_data is not None:
-            image = uco_data['image_rgb'][0].permute(1, 2, 0)
+            image = torch.zeros(512, 512, 3)
             
             
         elif image_type == "float32":
@@ -146,7 +146,7 @@ class GCDataset(InputDataset):
             img_data = data["image_idx"]
             #meta["depth_image"] = img_data['depth_map'][0]
             #meta["mask_image"] = img_data['mask_crop'][0]
-            meta["mask_image"] = (uco_data['fg_probability'] > 0).float()
+            meta["mask_image"] = uco_data.float()
             meta["unedited_image"] = data['image']
             return meta
         
