@@ -75,9 +75,11 @@ class GaussCtrlPipelineConfig(VanillaPipelineConfig):
 
     scene_name: str = "scene"
     """The name of the scene. Used for selecting the dataset."""
-
     sql_path: str = "sql_path"
     """Used for selecting the dataset."""
+    use_mask: bool = False
+    """Whether to use the mask or not"""
+
 class GaussCtrlPipeline(VanillaPipeline):
     """GaussCtrl pipeline"""
 
@@ -207,8 +209,11 @@ class GaussCtrlPipeline(VanillaPipeline):
             chunked_data = self.datamanager.train_data[idx: idx+self.chunk_size]
             
             indices = [current_data['image_idx'] for current_data in chunked_data]
-            mask_images = [current_data['mask_image'] for current_data in chunked_data if 'mask_image' in current_data.keys()] 
-            #mask_images = []
+            if self.config.use_mask:
+                mask_images = [current_data['mask_image'] for current_data in chunked_data if 'mask_image' in current_data.keys()]
+            else:
+                mask_images = []
+                
             unedited_images = [current_data['unedited_image'] for current_data in chunked_data]
             CONSOLE.print(f"Generating view: {indices}", style="bold yellow")
 
