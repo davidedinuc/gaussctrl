@@ -131,7 +131,7 @@ class GaussCtrlDataParser(DataParser):
         #width_fixed = "w" in meta
         distort_fixed = False
         for distort_key in ["k1", "k2", "k3", "p1", "p2", "distortion_params"]:
-            #if distort_key in meta:
+            if distort_key in meta:
                 distort_fixed = True
                 break #TODO controlla i parametri di distorsione di uco
         #fisheye_crop_radius = meta.get("fisheye_crop_radius", None)
@@ -257,7 +257,7 @@ class GaussCtrlDataParser(DataParser):
         # - dataparser_transform_matrix contains the transformation to dataparser output coordinates from original data coordinates.
         # - applied_transform contains the transformation to saved coordinates from original data coordinates.
         applied_transform = None
-        colmap_path = self.config.data / "colmap/sparse/0"
+        #colmap_path = self.config.data / "colmap/sparse/0"
         #if "applied_transform" in meta:
         #    applied_transform = torch.tensor(meta["applied_transform"], dtype=transform_matrix.dtype)
         #elif colmap_path.exists():
