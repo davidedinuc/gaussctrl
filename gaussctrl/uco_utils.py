@@ -44,7 +44,7 @@ def load_uco_data(scene_name, batch = 0, subset_lists_file = "set_lists_test_10.
         uco_dataset,
         scene_name,
         batch=batch,
-        max_frames=20,
+        max_frames=100,
     )
     gs_splat, ply_path = load_uco_gs(scene_name, subset_lists_file)
 
