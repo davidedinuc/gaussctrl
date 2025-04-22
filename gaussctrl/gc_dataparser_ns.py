@@ -332,8 +332,7 @@ class GaussCtrlDataParser(DataParser):
 
     def _generate_dataparser_outputs(self, uco_data, split="train"):
         '''load data to train from the sample trajectory''' 
-        #if uco_data is None: #Aggiungi una condizione per entrare qua dentro
-        #    uco_data = load_uco_data()
+
         if uco_data is not None:
             return self._generate_parser_uco(uco_data, split)
             

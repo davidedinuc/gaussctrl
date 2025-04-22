@@ -75,7 +75,7 @@ class GaussCtrlPipelineConfig(VanillaPipelineConfig):
 
     scene_name: str = "scene"
     """The name of the scene. Used for selecting the dataset."""
-    sql_path: str = "sql_path"
+    sql_file: str = "sql_path"
     """Used for selecting the dataset."""
     use_mask: bool = False
     """Whether to use the mask or not"""
